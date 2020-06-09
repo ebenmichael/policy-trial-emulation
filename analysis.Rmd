@@ -1,0 +1,220 @@
+---
+output:
+  html_notebook:
+    code_folding: hide
+---
+
+```{r boilerplate, message = F, warning = F}
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+library(forcats)
+```
+
+```{r read_state_data, message = F, warning = F}
+# USA data
+usa_state <- read_csv("data/covid-19-data/us-states.csv") %>%
+  filter(!fips %in% c(60, 11, 72, 78, 66, 69)) %>%
+  group_by(state, fips) %>%
+  arrange(date) %>%
+  mutate(diff_log_cases = c(0, diff(log(cases))),
+         diff_log_deaths = c(0, diff(log(deaths)))) %>%
+  ungroup()
+
+# nytimes shelter in place dates
+sipo_nyt <- read_csv("data/shelter_in_place_dates.csv",
+                     col_types = cols(fips = col_character(),
+                                      state = col_character(),
+                                      shelter_in_place = col_date()))
+
+
+
+# join policies with state info
+usa_state_panel <- usa_state %>% 
+    left_join(sipo_nyt, by = c("fips", "state")) %>%
+    mutate(
+        shelter_in_place_bin =  replace_na(1 * (date >= shelter_in_place), 0)
+          )
+
+# get first date with >= 10 cases
+usa_state_panel %>%
+  group_by(fips) %>%
+  summarise(tenth_date = min(date[cases >= 10])) %>%
+  inner_join(usa_state_panel) %>%
+  mutate(date_case = date - tenth_date) %>%
+  ungroup() -> usa_state_panel
+
+# drop all days with less than 10 cases
+# drop dates after states start reponening
+usa_state_panel %>%
+  filter(cases >= 10,
+         # some states started opening up here
+         date <= ymd("2020-04-26") 
+         ) -> usa_state_panel_tenth
+
+policy_var <- "shelter_in_place"
+policy_var_bin <- paste0(policy_var, "_bin")
+```
+
+## Treatment timing plots
+
+```{r sipo_calendar_time_state, message = FALSE, warning=FALSE}
+
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, policy_var, .desc = T)) %>%
+  ggplot(aes(x = date, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black") + 
+  scale_fill_brewer(str_to_title(str_replace_all(policy_var, "_", " ")), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  # facet_grid(state ~ ., scales = "free_y", space = "free_y") +
+  xlab("Calendar date") +
+  ylab("") +
+  theme_classic(15) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank()) -> panel_plot_cal
+
+```
+
+```{r sipo_case_time_state, message = FALSE, warning=FALSE}
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, 
+                            policy_var - tenth_date, 
+                            .desc = T)) %>%
+  ggplot(aes(x = date_case, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black") + 
+  scale_fill_brewer(str_to_title(str_replace_all(policy_var, "_", " ")), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  xlab("Days since tenth case") +
+  ylab("") +
+  coord_cartesian(expand = c(0,0)) +
+  theme_classic(15) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank()) -> panel_plot_case
+```
+
+```{r trt_times, fig.width = 16, fig.height = 9, message = FALSE, warning = FALSE}
+grid.arrange(panel_plot_cal, panel_plot_case, nrow = 1)
+```
+
+
+## Treatment effect estimates
+
+```{r stacked_event_state, message = FALSE, warning = FALSE, results = FALSE, cache = TRUE}
+source("code/helper_funcs.R")
+
+usa_state_panel_tenth %>%
+  mutate(log_cases = log(cases)) %>%
+fit_event_jack("log_cases",   "date", "state",
+          policy_var, ., 30) %>%
+  mutate(type = "Calendar Time") -> event_cal_state
+
+usa_state_panel_tenth %>% 
+  mutate(log_cases = log(cases),
+         shelter_in_place_case = shelter_in_place - tenth_date) %>%
+fit_event_jack("log_cases",   "date_case", "state",
+          paste0(policy_var, "_case"), ., 30) %>%
+   mutate(type = "Case Time") -> event_case_state
+
+fit_event_jack("diff_log_cases",   "date", "state",
+          policy_var, usa_state_panel_tenth, 30) %>%
+   mutate(type = "Calendar Time") -> event_cal_growth_state
+
+usa_state_panel_tenth %>% 
+  mutate(shelter_in_place_case = shelter_in_place - tenth_date) %>%
+fit_event_jack("diff_log_cases",   "date_case", "state",
+          paste0(policy_var, "_case"), ., 30) %>%
+   mutate(type = "Case Time") -> event_case_growth_state
+
+```
+
+```{r stacked_event_calendar, message = FALSE, warning = FALSE, caption = "Calendar time estimates"}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  group_by(event_time, outcome) %>%
+  filter(sum(nt) > 2) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "average") %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+ facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+xlab("Days from state-wide stay at home order") +
+ylab("Estimated effect") +
+theme_bw(15)
+```
+
+```{r stacked_event_case, message = FALSE, warning = FALSE, caption = "Case time estimates"}
+bind_rows(event_case_state %>% mutate(outcome = "Log Cases"),
+          event_case_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  group_by(event_time, outcome) %>%
+  filter(sum(nt) > 2) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "average") %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+ facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+xlab("Days from state-wide stay at home order") +
+ylab("Estimated effect") +
+theme_bw(15)
+
+```
+
+## March 23rd cohort vs untreated states
+
+```{r which_states}
+sipo_date <- ymd("2020-03-23")
+usa_state_panel_tenth %>% 
+  filter(shelter_in_place == sipo_date) %>%
+  distinct(state) %>%
+  pull(state) -> trt_states
+print(paste("Treated states are", paste(trt_states, collapse = ", ")))
+```
+
+```{r mar23_2x2_did_cal}
+usa_state_panel_tenth %>%
+  mutate(diff_cases = exp(diff_log_cases),
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var_bin = .[, policy_var_bin, drop = TRUE]) %>%
+  filter(policy_var == sipo_date | 
+         is.na(policy_var)) %>%
+  mutate(post = 1 * (date >= sipo_date),
+         trt = 1 * ! is.na(policy_var)) %>%
+  group_by(date) %>%
+  filter(sum(trt) > 1) %>%
+  ungroup() %>%
+  group_by(post, trt) %>%
+  summarise(min_date = min(date), did = mean(diff_log_cases), (exp(did) - 1) * 100)
+```
+
+```{r mar23_cohort_cal_case_diff, message = FALSE, warning = FALSE}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "2020_03_23", nt > 1) %>%
+#  filter(event_time >= -21, event_time <= 21) %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+ facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+#  scale_y_continuous(trans = "log10") +
+xlab("Days from state-wide stay at home order") +
+ylab("Estimated effect") +
+ ggtitle("March 23 Cohort") +
+theme_bw(15)
+
+```
