@@ -67,13 +67,13 @@ usa_state_panel_tenth %>%
   mutate(state = fct_reorder(state, policy_var, .desc = T)) %>%
   ggplot(aes(x = date, y = state, fill = as.factor(policy_var_bin))) +
   geom_tile(color = "black") + 
-  scale_fill_brewer(str_to_title(str_replace_all(policy_var, "_", " ")), 
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
                     labels = c("Not-Enacted", "Enacted"),
                     type = "qual", palette = "Set1") +
   # facet_grid(state ~ ., scales = "free_y", space = "free_y") +
   xlab("Calendar date") +
   ylab("") +
-  theme_classic(15) +
+  theme_classic(18) +
   theme(legend.position = "bottom",
         axis.ticks.x = element_blank()) -> panel_plot_cal
 
@@ -89,13 +89,13 @@ usa_state_panel_tenth %>%
                             .desc = T)) %>%
   ggplot(aes(x = date_case, y = state, fill = as.factor(policy_var_bin))) +
   geom_tile(color = "black") + 
-  scale_fill_brewer(str_to_title(str_replace_all(policy_var, "_", " ")), 
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
                     labels = c("Not-Enacted", "Enacted"),
                     type = "qual", palette = "Set1") +
   xlab("Days since tenth case") +
   ylab("") +
   coord_cartesian(expand = c(0,0)) +
-  theme_classic(15) +
+  theme_classic(18) +
   theme(legend.position = "bottom",
         axis.ticks.x = element_blank()) -> panel_plot_case
 ```
@@ -135,7 +135,35 @@ fit_event_jack("diff_log_cases",   "date_case", "state",
 
 ```
 
-```{r stacked_event_calendar, message = FALSE, warning = FALSE, caption = "Calendar time estimates"}
+```{r raw_cases, message = FALSE, warning = FALSE, results = FALSE, cache = TRUE}
+usa_state_panel_tenth %>%
+fit_event_jack("cases",   "date", "state",
+          policy_var, ., 30) %>%
+  mutate(type = "Calendar Time") -> event_cal_raw_state
+
+usa_state_panel_tenth %>% 
+  mutate(shelter_in_place_case = shelter_in_place - tenth_date) %>%
+fit_event_jack("cases",   "date_case", "state",
+          paste0(policy_var, "_case"), ., 30) %>%
+   mutate(type = "Case Time") -> event_case_raw_state
+```
+
+```{r ratio_cases, message = FALSE, warning = FALSE, results = FALSE, cache = TRUE}
+usa_state_panel_tenth %>%
+mutate(case_ratio = exp(diff_log_cases)) %>%
+fit_event_jack("case_ratio",   "date", "state",
+          policy_var, ., 30) %>%
+  mutate(type = "Calendar Time") -> event_cal_ratio_state
+
+usa_state_panel_tenth %>% 
+  mutate(case_ratio = exp(diff_log_cases),
+         shelter_in_place_case = shelter_in_place - tenth_date) %>%
+fit_event_jack("case_ratio",   "date_case", "state",
+          paste0(policy_var, "_case"), ., 30) %>%
+   mutate(type = "Case Time") -> event_case_ratio_state
+```
+
+```{r stacked_event_calendar, message = FALSE, warning = FALSE, fig.width = 8, fig.height=4.5, caption = "Calendar time estimates"}
 bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
           event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
   group_by(event_time, outcome) %>%
@@ -150,10 +178,10 @@ bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
 xlab("Days from state-wide stay at home order") +
 ylab("Estimated effect") +
-theme_bw(15)
+theme_bw(18)
 ```
 
-```{r stacked_event_case, message = FALSE, warning = FALSE, caption = "Case time estimates"}
+```{r stacked_event_case, message = FALSE, warning = FALSE,  fig.width = 8, fig.height=4.5, caption = "Case time estimates"}
 bind_rows(event_case_state %>% mutate(outcome = "Log Cases"),
           event_case_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
   group_by(event_time, outcome) %>%
@@ -165,12 +193,52 @@ bind_rows(event_case_state %>% mutate(outcome = "Log Cases"),
   geom_vline(xintercept = -0.5, lty = 2) +
   geom_point(data = data.frame(event_time = -1, estimate = 0)) +
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
- facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
-xlab("Days from state-wide stay at home order") +
-ylab("Estimated effect") +
-theme_bw(15)
+  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+  xlab("Days from state-wide stay at home order") +
+  ylab("Estimated effect") +
+  theme_bw(18)
 
 ```
+
+
+```{r stacked_event_raw, message = FALSE,  fig.width = 8, fig.height=4.5, warning = FALSE, caption = "Case time estimates"}
+bind_rows(event_cal_raw_state %>% mutate(outcome = "Calendar Time"),
+          event_case_raw_state %>% mutate(outcome = "Case Time")) %>%
+  group_by(event_time, outcome) %>%
+  filter(sum(nt) > 2) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "average") %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+ facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+xlab("Days from state-wide stay at home order") +
+ylab("Estimated effect on case counts") +
+theme_bw(18)
+
+```
+
+```{r stacked_event_ratio, message = FALSE,  fig.width = 8, fig.height=4.5, warning = FALSE, caption = "Case time estimates"}
+bind_rows(event_cal_ratio_state %>% mutate(outcome = "Calendar Time"),
+          event_case_ratio_state %>% mutate(outcome = "Case Time")) %>%
+  group_by(event_time, outcome) %>%
+  filter(sum(nt) > 2) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "average") %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+ facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+xlab("Days from state-wide stay at home order") +
+ylab("Estimated effect on daily case growth") +
+theme_bw(18)
+
+```
+
 
 ## March 23rd cohort vs untreated states
 
@@ -199,7 +267,7 @@ usa_state_panel_tenth %>%
   summarise(min_date = min(date), did = mean(diff_log_cases), (exp(did) - 1) * 100)
 ```
 
-```{r mar23_cohort_cal_case_diff, message = FALSE, warning = FALSE}
+```{r mar23_cohort_cal_case_diff, fig.width = 8, fig.height=4.5, message = FALSE, warning = FALSE}
 bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
           event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
   mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
@@ -215,6 +283,5 @@ bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
 xlab("Days from state-wide stay at home order") +
 ylab("Estimated effect") +
  ggtitle("March 23 Cohort") +
-theme_bw(15)
-
+theme_bw(18)
 ```
