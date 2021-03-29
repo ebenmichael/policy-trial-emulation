@@ -2,3 +2,5 @@
 analysis_cache
 analysis_files
 data/covid-19-data
+final_figs
+multiplier_bs.R

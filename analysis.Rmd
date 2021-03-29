@@ -104,10 +104,24 @@ usa_state_panel_tenth %>%
 grid.arrange(panel_plot_cal, panel_plot_case, nrow = 1)
 ```
 
+```{r trt_times_bw, fig.width = 16, fig.height = 9, message = FALSE, warning = FALSE}
+panel_plot_cal +
+  scale_fill_manual(str_to_title("Stay at Home Order"),
+                    values = c("white", "grey50"),
+                    labels = c("Not-Enacted", "Enacted")) -> panel_plot_cal_bw
+
+panel_plot_case +
+  scale_fill_manual(str_to_title("Stay at Home Order"),
+                    values = c("white", "grey50"),
+                    labels = c("Not-Enacted", "Enacted")) -> panel_plot_case_bw
+
+grid.arrange(panel_plot_cal_bw, panel_plot_case_bw, nrow = 1)
+```
+
 
 ## Treatment effect estimates
 
-```{r stacked_event_state, message = FALSE, warning = FALSE, results = FALSE, cache = TRUE}
+```{r stacked_event_state, message = FALSE, warning = FALSE, results = "hide", cache = TRUE}
 source("code/helper_funcs.R")
 
 usa_state_panel_tenth %>%
@@ -135,7 +149,7 @@ fit_event_jack("diff_log_cases",   "date_case", "state",
 
 ```
 
-```{r raw_cases, message = FALSE, warning = FALSE, results = FALSE, cache = TRUE}
+```{r raw_cases, message = FALSE, warning = FALSE, results = "hide", cache = TRUE}
 usa_state_panel_tenth %>%
 fit_event_jack("cases",   "date", "state",
           policy_var, ., 30) %>%
@@ -148,7 +162,7 @@ fit_event_jack("cases",   "date_case", "state",
    mutate(type = "Case Time") -> event_case_raw_state
 ```
 
-```{r ratio_cases, message = FALSE, warning = FALSE, results = FALSE, cache = TRUE}
+```{r ratio_cases, message = FALSE, warning = FALSE, results = "hide", cache = TRUE}
 usa_state_panel_tenth %>%
 mutate(case_ratio = exp(diff_log_cases)) %>%
 fit_event_jack("case_ratio",   "date", "state",
@@ -176,7 +190,7 @@ bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
   geom_point(data = data.frame(event_time = -1, estimate = 0)) +
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
-xlab("Days from state-wide stay at home order") +
+xlab("Days from statewide stay at home order") +
 ylab("Estimated effect") +
 theme_bw(18)
 ```
@@ -194,7 +208,7 @@ bind_rows(event_case_state %>% mutate(outcome = "Log Cases"),
   geom_point(data = data.frame(event_time = -1, estimate = 0)) +
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
   facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
-  xlab("Days from state-wide stay at home order") +
+  xlab("Days from statewide stay at home order") +
   ylab("Estimated effect") +
   theme_bw(18)
 
@@ -214,7 +228,7 @@ bind_rows(event_cal_raw_state %>% mutate(outcome = "Calendar Time"),
   geom_point(data = data.frame(event_time = -1, estimate = 0)) +
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
-xlab("Days from state-wide stay at home order") +
+xlab("Days from statewide stay at home order") +
 ylab("Estimated effect on case counts") +
 theme_bw(18)
 
@@ -233,7 +247,7 @@ bind_rows(event_cal_ratio_state %>% mutate(outcome = "Calendar Time"),
   geom_point(data = data.frame(event_time = -1, estimate = 0)) +
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
-xlab("Days from state-wide stay at home order") +
+xlab("Days from statewide stay at home order") +
 ylab("Estimated effect on daily case growth") +
 theme_bw(18)
 
@@ -280,8 +294,234 @@ bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
 #  scale_y_continuous(trans = "log10") +
-xlab("Days from state-wide stay at home order") +
+xlab("Days from statewide stay at home order") +
 ylab("Estimated effect") +
  ggtitle("March 23 Cohort") +
+theme_bw(18)
+```
+
+## Extra figures
+
+```{r sipo_calendar_time_empty, fig.width = 8, fig.height = 9, message = FALSE, warning = FALSE}
+
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, policy_var, .desc = T)) %>%
+  ggplot(aes(x = date, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black", alpha = 0) +
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  # facet_grid(state ~ ., scales = "free_y", space = "free_y") +
+  xlab("Calendar date") +
+  ylab("") +
+  theme_classic(18) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank())
+
+```
+
+
+
+```{r sipo_calendar_time_ca_pre, fig.width = 8, fig.height = 9, message = FALSE, warning = FALSE}
+
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, policy_var, .desc = T)) %>%
+  ggplot(aes(x = date, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black", alpha = 0) +
+  geom_tile(color = "black", data  = . %>% filter(state == "California", policy_var_bin == 0)) + 
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  # facet_grid(state ~ ., scales = "free_y", space = "free_y") +
+  xlab("Calendar date") +
+  ylab("") +
+  theme_classic(18) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank())
+
+```
+
+```{r sipo_calendar_time_ca_post, fig.width = 8, fig.height = 9, message = FALSE, warning = FALSE}
+
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, policy_var, .desc = T)) %>%
+  ggplot(aes(x = date, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black", alpha = 0) +
+  geom_tile(color = "black", data  = . %>% filter(state == "California")) + 
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  # facet_grid(state ~ ., scales = "free_y", space = "free_y") +
+  xlab("Calendar date") +
+  ylab("") +
+  theme_classic(18) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank())
+
+```
+
+```{r sipo_calendar_time_all, fig.width = 8, fig.height = 9, message = FALSE, warning = FALSE}
+
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, policy_var, .desc = T)) %>%
+  ggplot(aes(x = date, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black") +
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  # facet_grid(state ~ ., scales = "free_y", space = "free_y") +
+  xlab("Calendar date") +
+  ylab("") +
+  theme_classic(18) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank())
+
+```
+
+```{r sipo_case_time_state_all, fig.width = 8, fig.height = 9, message = FALSE, warning = FALSE}
+usa_state_panel_tenth %>%
+  mutate(policy_var_bin = .[, paste0(policy_var, "_bin"), drop = TRUE],
+         policy_var = .[, policy_var, drop = TRUE],
+         policy_var = replace_na(policy_var, ymd("3000-01-01"))) %>%
+  mutate(state = fct_reorder(state, 
+                            policy_var - tenth_date, 
+                            .desc = T)) %>%
+  ggplot(aes(x = date_case, y = state, fill = as.factor(policy_var_bin))) +
+  geom_tile(color = "black") + 
+  scale_fill_brewer(str_to_title("Stay at Home Order"), 
+                    labels = c("Not-Enacted", "Enacted"),
+                    type = "qual", palette = "Set1") +
+  xlab("Days since tenth case") +
+  ylab("") +
+  coord_cartesian(expand = c(0,0)) +
+  theme_classic(18) +
+  theme(legend.position = "bottom",
+        axis.ticks.x = element_blank())
+```
+
+```{r mar23_cohort_cal_build0, fig.width = 5.5 , fig.height=4.5, message = FALSE, warning = FALSE}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "2020_03_23", nt > 1,
+         outcome == "Log Case Growth") %>%
+#  filter(event_time >= -21, event_time <= 21) %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0), color = "#FDB515", size = 5) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high), alpha = 0) +
+  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+  xlab("Days from statewide stay at home order") +
+  ylab("Estimated effect") +
+  ggtitle("March 23 Cohort") +
+  theme_bw(18)
+```
+
+```{r mar23_cohort_cal_build1, fig.width = 5.5 , fig.height=4.5, message = FALSE, warning = FALSE}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "2020_03_23", nt > 1,
+         outcome == "Log Case Growth") %>%
+#  filter(event_time >= -21, event_time <= 21) %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0), color = "#FDB515", size = 5) +
+  geom_point(data = . %>% filter(event_time == 10), color = "#FDB515", size = 5) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high), alpha = 0) +
+  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+  xlab("Days from statewide stay at home order") +
+  ylab("Estimated effect") +
+  ggtitle("March 23 Cohort") +
+  theme_bw(18)
+```
+
+```{r mar23_cohort_cal_build2, fig.width = 5.5, fig.height=4.5, message = FALSE, warning = FALSE}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "2020_03_23", nt > 1,
+         outcome == "Log Case Growth") %>%
+#  filter(event_time >= -21, event_time <= 21) %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0), color = "#FDB515", size = 5) +
+  geom_point(data = . %>% filter(event_time %in% c(-10, 10)), color = "#FDB515", size = 5) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high), alpha = 0) +
+  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+  xlab("Days from statewide stay at home order") +
+  ylab("Estimated effect") +
+  ggtitle("March 23 Cohort") +
+  theme_bw(18)
+```
+
+```{r mar23_cohort_cal_build3, fig.width = 5.5, fig.height=4.5, message = FALSE, warning = FALSE}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "2020_03_23", nt > 1,
+         outcome == "Log Case Growth") %>%
+#  filter(event_time >= -21, event_time <= 21) %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_point() +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high), alpha = 0) +
+  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+  xlab("Days from statewide stay at home order") +
+  ylab("Estimated effect") +
+  ggtitle("March 23 Cohort") +
+  theme_bw(18)
+```
+
+```{r mar23_cohort_cal_build4, fig.width = 5.5, fig.height=4.5, message = FALSE, warning = FALSE}
+bind_rows(event_cal_state %>% mutate(outcome = "Log Cases"),
+          event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "2020_03_23", nt > 1,
+         outcome == "Log Case Growth") %>%
+#  filter(event_time >= -21, event_time <= 21) %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+  facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+  xlab("Days from statewide stay at home order") +
+  ylab("Estimated effect") +
+  ggtitle("March 23 Cohort") +
+  theme_bw(18)
+```
+
+```{r stacked_event_calendar_growth, message = FALSE, warning = FALSE, fig.width = 5.5, fig.height=4.5, caption = "Calendar time estimates"}
+bind_rows(event_cal_growth_state %>% mutate(outcome = "Log Case Growth")) %>%
+  group_by(event_time, outcome) %>%
+  filter(sum(nt) > 2) %>%
+  mutate(conf.low = estimate - 2 * se, conf.high = estimate + 2 * se) %>%
+  filter(cohort == "average") %>%
+  ggplot(aes(x = event_time, y = estimate)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = -0.5, lty = 2) +
+  geom_point(data = data.frame(event_time = -1, estimate = 0)) +
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
+ facet_wrap(~ outcome, ncol = 2, scales = "free_y") +
+xlab("Days from statewide stay at home order") +
+ylab("Estimated effect") +
 theme_bw(18)
 ```
